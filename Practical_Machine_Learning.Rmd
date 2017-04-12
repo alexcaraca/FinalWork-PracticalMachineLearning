@@ -1,0 +1,132 @@
+---
+title: "Final Project - Practical Machine Learning"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results = "hide")
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(rattle)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(repmis)
+```
+  
+## Synopsis
+
+As mentioned in the Coursera project description: 
+"Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset)."  
+
+The data necessary for this assignment is available on (training and test set, respectively):  
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv  
+
+## Data
+
+```{r}
+InTrain <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+InTest <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+FileInTrain <- read.csv(InTrain, header = T)
+FileInTest <- read.csv(InTest, header = T)
+dim(FileInTrain)
+dim(FileInTest)
+```
+
+Creating a training and testing set:
+```{r}
+set.seed(1000)
+SampleTraining <- createDataPartition(FileInTrain$classe, p=0.7, list=FALSE)
+TrainingFile <- FileInTrain[SampleTraining,]
+TestingFile <- FileInTrain[-SampleTraining,]
+dim(TrainingFile)
+dim(TestingFile)
+```
+  
+## Cleaning the data  
+  
+Remove variables with almost any variance (near zero variance):  
+```{r}
+novar <- nearZeroVar(TrainingFile, saveMetrics=TRUE)
+TrainingFile <- TrainingFile [,novar$nzv == FALSE]
+TestingFile <- TestingFile [,novar$nzv == FALSE]
+dim(TrainingFile)
+dim(TestingFile)
+```
+  
+Remove variables that are in most cases NA:  
+```{r}
+removeNA <- sapply(TrainingFile, function(x) mean(is.na(x)))> 0.8
+TrainingFile <- TrainingFile [,removeNA == F]
+TestingFile <- TestingFile [,removeNA == F]
+dim(TrainingFile)
+dim(TestingFile)
+```
+    
+Remove variables that are not meaningfull for prediction:
+```{r}
+TrainingFile <- TrainingFile[, -(1:5)]
+TestingFile <- TestingFile[, -(1:5)]
+dim(TrainingFile)
+dim(TestingFile)
+```  
+
+## Creating a model of prediction  
+
+### Classification Trees
+
+For the first model we will try to use Classification Trees:
+```{r}
+control <- trainControl(method = "cv", number = 5)
+TrainingCT <- train(classe ~ ., data = TrainingFile, method = "rpart", trControl = control)
+```  
+```{r, results = "markup"}
+print(TrainingCT)
+fancyRpartPlot(TrainingCT$finalModel)
+```  
+
+And the results for the testing set:
+```{r}
+PredictTestCT <- predict(TrainingCT, TestingFile)
+```  
+```{r, results = "markup"}
+ConfTestCT <- confusionMatrix(TestingFile$classe, PredictTestCT)
+AccuracyTestCT <- ConfTestCT$overall[1]
+print(AccuracyTestCT)
+```  
+
+The accuracy test is approximatly 57%. We will try now another approach.
+
+### Random Forests  
+
+```{r}
+TrainingRF <- train(classe ~ ., data = TrainingFile, method = "rf", trControl = control)
+```  
+```{r, results = "markup"}
+print(TrainingRF)
+```  
+  
+And the results for the testing set:
+```{r}
+PredictTestRF <- predict(TrainingRF, TestingFile)
+```  
+```{r, results = "markup"}
+ConfTestRF <- confusionMatrix(TestingFile$classe, PredictTestRF)
+AccuracyTestRF <- ConfTestRF$overall[1]
+print(AccuracyTestRF)
+```    
+
+With Random Forests we have a higher accuracy and that why we will go further with this technic.
+  
+## Final Prediction
+  
+Finally we apply our results of Random Forests on the initial testing set:   
+```{r, results = "markup"}
+PredictFinal <- predict(TrainingRF, FileInTest)
+print(PredictFinal)
+```    
